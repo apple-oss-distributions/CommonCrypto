@@ -69,6 +69,7 @@
 				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = commonCrypto_profile;
 				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = "-Wmost -Wno-four-char-constants -Wno-unknown-pragmas";
 			};
 			dependencies = (
@@ -298,7 +299,7 @@
 				B125268E0713742A00BB8157,
 			);
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 24911;
 				GCC_WARN_FOUR_CHARACTER_CONSTANTS = NO;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)";
 				INSTALLHDRS_COPY_PHASE = YES;
@@ -311,6 +312,7 @@
 				PRODUCT_NAME = commonCrypto;
 				PUBLIC_HEADERS_FOLDER_PATH = /;
 				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = "-Wall -Werror";
 			};
 			dependencies = (
@@ -393,6 +395,7 @@
 				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = commonCryptoStatic;
 				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = "-Wmost";
 			};
 			dependencies = (
@@ -689,6 +692,7 @@
 				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = commonCrypto_debug;
 				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = "-Wmost -Wno-four-char-constants -Wno-unknown-pragmas";
 			};
 			dependencies = (
@@ -884,7 +888,7 @@
 //B13
 //B14
 		B125268E0713742A00BB8157 = {
-			compilerSpec = com.apple.compilers.gcc.3_5;
+			compilerSpec = com.apple.compilers.gcc;
 			fileType = sourcecode.c;
 			isEditable = 1;
 			isa = PBXBuildRule;
@@ -892,7 +896,7 @@
 			);
 		};
 		B125268F0713744500BB8157 = {
-			compilerSpec = com.apple.compilers.gcc.3_5;
+			compilerSpec = com.apple.compilers.gcc;
 			fileType = sourcecode.c;
 			isEditable = 1;
 			isa = PBXBuildRule;
@@ -900,7 +904,7 @@
 			);
 		};
 		B12526900713744F00BB8157 = {
-			compilerSpec = com.apple.compilers.gcc.3_5;
+			compilerSpec = com.apple.compilers.gcc;
 			fileType = sourcecode.c;
 			isEditable = 1;
 			isa = PBXBuildRule;
@@ -908,7 +912,7 @@
 			);
 		};
 		B12526910713745B00BB8157 = {
-			compilerSpec = com.apple.compilers.gcc.3_5;
+			compilerSpec = com.apple.compilers.gcc;
 			fileType = sourcecode.c;
 			isEditable = 1;
 			isa = PBXBuildRule;
