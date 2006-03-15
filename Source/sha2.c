@@ -213,7 +213,7 @@ extern "C"
 #if !defined(PLATFORM_BYTE_ORDER)
 
 #if   defined( __alpha__ ) || defined( __alpha ) || defined( i386 )       || \
-      defined( __i386__ )  || defined( _M_I86 )  || defined( _M_IX86 )    || \
+      defined( __i386__ )  || defined( _M_I86 )  || defined( _M_IX86 )    || defined(__x86_64__) || \
       defined( __OS2__ )   || defined( sun386 )  || defined( __TURBOC__ ) || \
       defined( vax )       || defined( vms )     || defined( VMS )        || \
       defined( __VMS )
