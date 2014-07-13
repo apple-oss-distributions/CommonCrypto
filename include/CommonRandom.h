@@ -1,5 +1,5 @@
-/*                                                                              
- * Copyright (c) 2010 Apple Inc. All Rights Reserved.
+/*
+ * Copyright (c) 2014 Apple Inc. All Rights Reserved.
  * 
  * @APPLE_LICENSE_HEADER_START@
  * 
@@ -21,23 +21,38 @@
  * @APPLE_LICENSE_HEADER_END@
  */
 
-/*
- *  ccErrors.h
- *  CommonCrypto
+//
+//  CommonRandom.h
+//  CommonCrypto
+
+#ifndef CommonCrypto_CommonRandom_h
+#define CommonCrypto_CommonRandom_h
+
+#if defined(__cplusplus)
+extern "C" {
+#endif	
+
+typedef CCCryptorStatus CCRNGStatus;
+    
+/*!
+ @function      CCRandomGenerateBytes
+ 
+ @abstract      Return random bytes in a buffer allocated by the caller.
+ 
+ @discussion    The PRNG returns cryptographically strong random
+                bits suitable for use as cryptographic keys, IVs, nonces etc.
+ 
+ @param         bytes   Pointer to the return buffer.
+ @param         count   Number of random bytes to return.
+
+ @result        Return kCCSuccess on success.
  */
 
-#include "CommonCryptor.h"
-#include "ccdebug.h"
-#ifndef CCERRORS_H
-#define CCERRORS_H
+CCRNGStatus CCRandomGenerateBytes(void *bytes, size_t count)
+__OSX_AVAILABLE_STARTING(__MAC_10_10, __IPHONE_8_0);
+    
+#if defined(__cplusplus)
+}
+#endif
 
-#define CONTEXT_SIZE_CHK(CCCTX,DIGESTDI) (sizeof(CCCTX) < ccdigest_di_size(DIGESTDI))
-#define CC_NONULLPARM(X) if(NULL==(X)) return kCCParamError
-#define CC_NONULLPARMRETNULL(X) if(NULL==(X)) return NULL
-
-#define CC_FAILURE_LOG(...) ccdebug_imp(ASL_LEVEL_CRIT, __FUNCTION__, __VA_ARGS__)
-#define CC_ABORT()      abort()
-
-
-#endif /* CCERRORS_H */
-
+#endif
