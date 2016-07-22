@@ -37,9 +37,9 @@ extern "C" {
 /* This is included here, because its already included by all the test case */
 #include "testlist.h"
     
-typedef int (*one_test_entry)(int argc, char *const *argv);
+typedef int (*one_test_entry)(int __unused argc, char *const * __unused argv);
     
-#define ONE_TEST_ENTRY(x) int x(int argc, char *const *argv)
+#define ONE_TEST_ENTRY(x) int x(int __unused argc, char *const * __unused argv)
     
 struct one_test_s {
     char *name;            /* test name */
@@ -72,8 +72,13 @@ int run_one_test(struct one_test_s *test, int argc, char * const *argv);
 })
 #define isnt(THIS, THAT, TESTNAME) \
 	cmp_ok((THIS), !=, (THAT), (TESTNAME))
+
+#define log(do_print, MSG, ARGS...) \
+if(do_print){test_diag(test_directive, test_reason, __FILE__, __LINE__, MSG, ## ARGS);}
+
 #define diag(MSG, ARGS...) \
 	test_diag(test_directive, test_reason, __FILE__, __LINE__, MSG, ## ARGS)
+
 #define cmp_ok(THIS, OP, THAT, TESTNAME) \
 ({ \
 	__typeof__(THIS) _this = (THIS); \
