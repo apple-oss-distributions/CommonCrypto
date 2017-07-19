@@ -25,22 +25,20 @@
 #define _CC_CryptorSPI_H_
 
 #include <sys/types.h>
-#include <sys/param.h>
 #include <stdint.h>
 
 #include <string.h>
-#ifdef KERNEL
-#include <machine/limits.h>
-#else
 #include <limits.h>
 #include <stdlib.h>
-#endif /* KERNEL */
 #include <Availability.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#if defined(_WIN32)
+    int timingsafe_bcmp(const void *b1, const void *b2, size_t n);
+#endif
 /*
 	This is an SPI header.  It includes some work in progress implementation notes that
 	will be removed when this is promoted to an API set.
@@ -169,9 +167,7 @@ CCCryptorStatus CCDesIsWeakKey(
                                size_t Length)
 __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_5_0);
 
-void CCDesSetOddParity(
-                       void *key,
-                       size_t Length)
+void CCDesSetOddParity(void *key, size_t Length)
 __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_5_0);
 
 uint32_t CCDesCBCCksum(void *input, void *output,
@@ -198,17 +194,28 @@ __OSX_AVAILABLE_STARTING(__MAC_10_7, __IPHONE_5_0);
 */
 
 /*
-	This adds the initial vector octets from iv of length ivLen to the GCM
+	Deprecated. Use CCCryptorGCMSetIV() instead.
+    This adds the initial vector octets from iv of length ivLen to the GCM
 	CCCryptorRef. You can call this function as many times as required to
 	process the entire IV.
 */
     
 CCCryptorStatus
 CCCryptorGCMAddIV(CCCryptorRef cryptorRef,
-                	const void 		*iv,
-                    size_t ivLen)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_5_0);
-
+                	const void *iv, size_t ivLen)
+__OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_8,__MAC_10_13,__IPHONE_5_0,__IPHONE_11_0, "use CCCryptorGCMSetIV");
+    
+    
+/*
+   This adds the initial vector octets from iv of length ivLen to the GCM
+   CCCryptorRef. The input iv cannot be NULL and ivLen must be between 12
+   to 16 bytes inclusive. CCRandomGenerateBytes() can be used to generate random IVs
+*/
+    
+CCCryptorStatus
+CCCryptorGCMSetIV(CCCryptorRef cryptorRef,
+                    const void *iv, size_t ivLen)
+__OSX_AVAILABLE_STARTING(__MAC_10_13, __IPHONE_11_0);
 /*
 	Additional Authentication Data
 	After the entire IV has been processed, the additional authentication 
@@ -256,16 +263,37 @@ CCCryptorStatus CCCryptorGCMDecrypt(
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_5_0);
 
 /*
-	This terminates the GCM state gcm and stores the tag in tag of length
+	This finalizes the GCM state gcm and stores the tag in tag of length
     taglen octets.
+ 
+    The tag must be verified by comparing the computed and expected values
+    using timingsafe_bcmp. Other comparison functions (e.g. memcmp)
+    must not be used as they may be vulnerable to practical timing attacks,
+    leading to tag forgery.
+
 */
 
 CCCryptorStatus CCCryptorGCMFinal(
 	CCCryptorRef cryptorRef,
-	const void *tag,
+	void   *tagOut,
 	size_t *tagLength)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_5_0);
-
+__OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_8,__MAC_10_13,__IPHONE_5_0,__IPHONE_11_0, "use CCCryptorGCMFinalize");
+ 
+/*
+     This finalizes the GCM state gcm.
+ 
+     On encryption, the computed tag is returned in tagOut.
+ 
+     On decryption, the provided tag is securly compared to the expected tag, and
+     error is returned if the tags do not match. The tag buffer contectnt is not modified on decryption.
+     is not updated on decryption.
+*/
+CCCryptorStatus CCCryptorGCMFinalize(
+    CCCryptorRef cryptorRef,
+    void   *tag,
+    size_t tagLength)
+__OSX_AVAILABLE_STARTING(__MAC_10_13, __IPHONE_11_0);
+    
 /*
 	This will reset the GCM CCCryptorRef to the state that CCCryptorCreateWithMode() 
     left it. The user would then call CCCryptorGCMAddIV(), CCCryptorGCMaddAAD(), etc.
@@ -276,12 +304,19 @@ CCCryptorStatus CCCryptorGCMReset(
 __OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_5_0);
 
 /*
-	This will initialize the GCM state with the given key, IV and AAD value 
+    Deprecated. Use CCCryptorGCMOneshotEncrypt() or CCCryptorGCMOneshotDecrypt() instead.
+
+	This will initialize the GCM state with the given key, IV and AAD value
     then proceed to encrypt or decrypt the message text and store the final 
     message tag. The definition of the variables is the same as it is for all 
     the manual functions. If you are processing many packets under the same 
     key you shouldn’t use this function as it invokes the pre–computation 
     with each call.
+
+    The tag must be verified by comparing the computed and expected values
+    using timingsafe_bcmp. Other comparison functions (e.g. memcmp)
+    must not be used as they may be vulnerable to practical timing attacks,
+    leading to tag forgery.
 */
 
 CCCryptorStatus CCCryptorGCM(
@@ -296,11 +331,64 @@ CCCryptorStatus CCCryptorGCM(
 	const void 		*dataIn,
 	size_t 			dataInLength,
   	void 			*dataOut,
-	const void 		*tag,
+	void 		    *tagOut,
 	size_t 			*tagLength)
-__OSX_AVAILABLE_STARTING(__MAC_10_8, __IPHONE_5_0);
-    
+__OSX_AVAILABLE_BUT_DEPRECATED_MSG(__MAC_10_8,__MAC_10_13,__IPHONE_6_0,__IPHONE_11_0, "use CCCryptorGCMOneshotDecrypt or CCCryptorGCMOneshotEncrypt");
 
+    /*!
+     @function   CCCryptorGCMOneshotDecrypt
+     @abstract   Encrypts using AES-GCM and outputs encrypted data and an authentication tag
+     @param      alg            It can only be kCCAlgorithmAES
+     @param      key            Key for the underlying AES blockcipher. It must be 16 bytes. *****
+     @param      keyLength      Length of the key in bytes
+
+     @param      iv             Initialization vector, must be at least 12 bytes
+     @param      ivLength       Length of the IV in bytes
+     
+     @param      aData          Additional data to authenticate. It can be NULL, if there is no additionl data to be authenticated.
+     @param      aDataLength    Length of the additional data in bytes. It can be zero.
+     
+     @param      dataIn         Input plaintext
+     @param      dataInLength   Length of the input plaintext data in bytes
+     
+     @param      cipherOut      Output ciphertext
+     @param      tagLength      Length of the output authentication tag in bytes. It is minimum 8 bytes and maximum 16 bytes.  
+     @param      tagOut         the output authentication tag
+     
+     @result     kccSuccess if successful.
+     
+     @discussion It is a one-shot AESGCM encryption and in-place encryption is supported.
+     
+     @warning The key-IV pair must be unique per encryption. The IV must be nonzero in length.
+     
+     In stateful protocols, if each packet exposes a guaranteed-unique value, it is recommended to format this as a 12-byte value for use as the IV.
+     
+     In stateless protocols, it is recommended to choose a 16-byte value using a cryptographically-secure pseudorandom number generator (e.g. @p ccrng).
+   */
+    
+CCCryptorStatus CCCryptorGCMOneshotEncrypt(CCAlgorithm alg, const void  *key,    size_t keyLength, /* raw key material */
+                                        const void  *iv,     size_t ivLength,
+                                        const void  *aData,  size_t aDataLength,
+                                        const void  *dataIn, size_t dataInLength,
+                                        void 	    *cipherOut,
+                                        void        *tagOut, size_t tagLength) __attribute__((__warn_unused_result__))
+__OSX_AVAILABLE_STARTING(__MAC_10_13, __IPHONE_11_0);
+ 
+    /*!
+     @function   CCCryptorGCMOneshotDecrypt
+     @abstract   Decrypts using AES-GCM, compares the computed tag of the decrypted message to the input tag and returns error is authentication fails.
+     
+     @discussion CCCryptorGCMOneshotDecrypt() works similar to the CCCryptorGCMOneshotEncrypt(). CCCryptorGCMOneshotDecrypt() does not return the tag of the decrypted message. It compated the computed tag with inout tag and outputs error if authentication of the decrypted message fails.
+     */
+    
+CCCryptorStatus CCCryptorGCMOneshotDecrypt(CCAlgorithm alg, const void  *key,    size_t keyLength,
+                                       const void  *iv,     size_t ivLen,
+                                       const void  *aData,  size_t aDataLen,
+                                       const void  *dataIn, size_t dataInLength,
+                                       void 	   *dataOut,
+                                       const void  *tagIn,  size_t tagLength) __attribute__((__warn_unused_result__))
+    __OSX_AVAILABLE_STARTING(__MAC_10_13, __IPHONE_11_0);
+    
 void CC_RC4_set_key(void *ctx, int len, const unsigned char *data)
 __OSX_AVAILABLE_STARTING(__MAC_10_4, __IPHONE_5_0);
 

@@ -22,25 +22,27 @@
  */
 
 // #define COMMON_EC_FUNCTIONS
-#include "CommonECCryptor.h"
-#include "CommonDigest.h"
+#include <CommonCrypto/CommonECCryptor.h>
+#include <CommonCrypto/CommonDigest.h>
 #include "CommonDigestPriv.h"
-#include "CommonRandomSPI.h"
+#include <CommonCrypto/CommonRandomSPI.h>
 #include "ccMemory.h"
-#import <corecrypto/ccec.h>
-#include <AssertMacros.h>
+#include <corecrypto/ccec.h>
 #include "ccdebug.h"
+
+#include "cc_macros_priv.h"
+
 
 
 #pragma mark Internal Structures and Functions
 
 typedef struct _CCECCryptor {
     union {
-        ccec_full_ctx *private;
-        ccec_pub_ctx *public;
+        ccec_full_ctx_t private;
+        ccec_pub_ctx_t public;
         uint8_t *bytes;
     } ecKey;
-    size_t keySize;
+    size_t key_nbits;
     CCECKeyType keyType;
 } CCECCryptor;
 
@@ -58,7 +60,7 @@ ccMallocECCryptor(size_t nbits, CCECKeyType keyType)
 
     if((retval = CC_XMALLOC(sizeof(CCECCryptor))) == NULL) return NULL;
     
-    retval->keySize = nbits;
+    retval->key_nbits = nbits;
     retval->ecKey.bytes = NULL;
     
     switch(keyType) {
@@ -88,7 +90,7 @@ errOut:
 static void
 ccECCryptorFree(CCECCryptor *theKey)
 {
-    size_t nbits = theKey->keySize;
+    size_t nbits = theKey->key_nbits;
     size_t ctxSize = 0;
     
     ccec_const_cp_t cp = ccec_get_cp(nbits);    
@@ -156,12 +158,12 @@ CCECCryptorGeneratePair(size_t nbits, CCECCryptorRef *publicKey, CCECCryptorRef 
     CCECCryptor *publicCryptor = NULL;
     struct ccrng_state *theRng = ccDRBGGetRngState();
     
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(!ccec_keysize_is_supported(nbits)) return kCCParamError;
     ccec_const_cp_t cp = ccec_get_cp(nbits);    
 
     __Require_Action((privateCryptor = ccMallocECCryptor(nbits, ccECKeyPrivate)) != NULL, errOut, retval = kCCMemoryFailure);
-    privateCryptor->keySize = nbits;
+    privateCryptor->key_nbits = nbits;
 
     __Require_Action((ccec_generate_key(cp, theRng, privateCryptor->ecKey.private) == 0), errOut, retval = kCCDecodeError);
         
@@ -189,12 +191,12 @@ CCECCryptorGetPublicKeyFromPrivateKey(CCECCryptorRef privateKey)
 {
     CCECCryptor *publicCryptor = NULL;
 
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
-    __Require((publicCryptor = ccMallocECCryptor(privateKey->keySize, ccECKeyPublic)) != NULL, errOut);
-    ccec_const_cp_t cp = ccec_get_cp(privateKey->keySize);    
+    CC_DEBUG_LOG("Entering\n");
+    __Require((publicCryptor = ccMallocECCryptor(privateKey->key_nbits, ccECKeyPublic)) != NULL, errOut);
+    ccec_const_cp_t cp = ccec_get_cp(privateKey->key_nbits);    
     size_t ctx_size = ccec_pub_ctx_size(ccec_cp_prime_size(cp));
     CC_XMEMCPY(publicCryptor->ecKey.public, privateKey->ecKey.public, ctx_size);
-    publicCryptor->keySize = privateKey->keySize;
+    publicCryptor->key_nbits = privateKey->key_nbits;
     publicCryptor->keyType = ccECKeyPublic;
     
     if(ccECpairwiseConsistencyCheck(privateKey, publicCryptor) == false) goto errOut;
@@ -213,7 +215,7 @@ CCECCryptorGetKeyComponents(CCECCryptorRef ecKey, size_t *keySize,
                             uint8_t *qY, size_t *qYLength,
                             uint8_t *d, size_t *dLength)
 {
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     switch(ecKey->keyType) {
         case ccECKeyPublic:
             if(ccec_get_pubkey_components(ecKey->ecKey.public, keySize, 
@@ -239,7 +241,7 @@ CCECCryptorCreateFromData(size_t nbits,
 {
     CCECCryptor *publicCryptor;
     
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     *ref = NULL;
     if((publicCryptor = ccMallocECCryptor(nbits, ccECKeyPublic)) == NULL) return kCCMemoryFailure;
     if(ccec_make_pub(nbits, qXLength, qX, qYLength, qY, publicCryptor->ecKey.public)) {
@@ -257,7 +259,7 @@ CCECKeyType CCECGetKeyType(CCECCryptorRef key)
     CCECCryptor *cryptor = key;
     CCECKeyType retval;
     
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(key == NULL) return ccECBlankPublicKey;
     retval = cryptor->keyType;
     if(retval != ccECKeyPublic && retval != ccECKeyPrivate) return ccECBadKey;
@@ -266,21 +268,21 @@ CCECKeyType CCECGetKeyType(CCECCryptorRef key)
 
 int CCECGetKeySize(CCECCryptorRef key)
 {
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(key == NULL) return kCCParamError;
-    return (int) key->keySize;
+    return (int) key->key_nbits;
 }
 
 void 
 CCECCryptorRelease(CCECCryptorRef key)
 {
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     ccECCryptorFree(key);
 }
 
 CCCryptorStatus CCECCryptorImportPublicKey(void *keyPackage, size_t keyPackageLen, CCECCryptorRef *key)
 {
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     return CCECCryptorImportKey(kCCImportKeyBinary, keyPackage, keyPackageLen, ccECKeyPublic, key);
 }
 
@@ -290,7 +292,7 @@ CCCryptorStatus CCECCryptorImportKey(CCECKeyExternalFormat format, void *keyPack
     CCECCryptor *cryptor = NULL;
     CCCryptorStatus retval = kCCSuccess;
     
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(keyPackage == NULL) return kCCParamError;
         
     switch(format) {
@@ -300,13 +302,13 @@ CCCryptorStatus CCECCryptorImportKey(CCECKeyExternalFormat format, void *keyPack
                 if((cryptor = ccMallocECCryptor(nbits, ccECKeyPrivate)) == NULL) return kCCMemoryFailure;
                 ccec_const_cp_t cp = ccec_get_cp(nbits);
                 __Require_Action(ccec_x963_import_priv(cp, keyPackageLen, keyPackage, cryptor->ecKey.private) == 0, errOut, retval = kCCDecodeError);
-                cryptor->keySize = nbits;
+                cryptor->key_nbits = nbits;
             } else if(keyType == ccECKeyPublic) {
                 size_t nbits = ccec_x963_import_pub_size(keyPackageLen);
                 if((cryptor = ccMallocECCryptor(nbits, ccECKeyPublic)) == NULL) return kCCMemoryFailure;
                 ccec_const_cp_t cp = ccec_get_cp(nbits);
                 __Require_Action(ccec_x963_import_pub(cp, keyPackageLen, keyPackage, cryptor->ecKey.public) == 0, errOut, retval = kCCDecodeError);
-                cryptor->keySize = nbits;
+                cryptor->key_nbits = nbits;
             } else return kCCParamError;
 
             cryptor->keyType = keyType;
@@ -333,7 +335,7 @@ errOut:
 
 CCCryptorStatus CCECCryptorExportPublicKey(CCECCryptorRef key, void *out, size_t *outLen)
 {    
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(key == NULL) return kCCParamError;
     if(out == NULL) return kCCParamError;
     
@@ -344,13 +346,13 @@ CCCryptorStatus CCECCryptorExportKey(CCECKeyExternalFormat format, void *keyPack
 {
     CCCryptorStatus retval = kCCSuccess;
     
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(key == NULL) return kCCParamError;
     if(keyPackage == NULL) return kCCParamError;
     
     switch(format) {
         case kCCImportKeyBinary: {
-            size_t len = ccec_x963_export_size(keyType == ccECKeyPrivate, key->ecKey.private);
+            size_t len = ccec_x963_export_size(keyType == ccECKeyPrivate, ccec_ctx_public(key->ecKey.private));
             
             if(len > *keyPackageLen) {
                 *keyPackageLen = len;
@@ -381,7 +383,7 @@ CCECCryptorSignHash(CCECCryptorRef privateKey,
 {
     CCCryptorStatus retval = kCCSuccess;
     
-    // CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    // CC_DEBUG_LOG("Entering\n");
     if(privateKey == NULL || hashToSign == NULL || signedData == NULL || signedDataLen == NULL) return kCCParamError;
     
     struct ccrng_state *therng = ccDRBGGetRngState();
@@ -401,7 +403,7 @@ CCECCryptorVerifyHash(CCECCryptorRef publicKey,
     CCCryptorStatus retval = kCCSuccess;
     bool           stat = 0;
     
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(publicKey == NULL || hash == NULL || signedData == NULL) return kCCParamError;
     
     if(ccec_verify(publicKey->ecKey.public, hashLen, hash,
@@ -420,7 +422,7 @@ CCECCryptorWrapKey(CCECCryptorRef __unused publicKey,
                    void * __unused cipherText, size_t * __unused cipherTextLen,
                    CCDigestAlg __unused digestType)
 {
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     return kCCUnimplemented;
 }
 
@@ -430,7 +432,7 @@ CCECCryptorUnwrapKey(CCECCryptorRef __unused privateKey,
                      const void * __unused cipherText, size_t __unused cipherTextLen,
                      void * __unused plainText, size_t * __unused plainTextLen)
 {
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     return kCCUnimplemented;
 }
 
@@ -441,7 +443,7 @@ CCECCryptorComputeSharedSecret(CCECCryptorRef privateKey, CCECCryptorRef publicK
 {
     CCCryptorStatus retval = kCCSuccess;
     
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(privateKey == NULL || publicKey == NULL) return kCCParamError;
     if(out == NULL) return kCCParamError;
     

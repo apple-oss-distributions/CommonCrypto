@@ -22,10 +22,9 @@
  */
 
 // #define COMMON_RANDOM_FUNCTIONS
-#include "CommonRandomSPI.h"
+#include <CommonCrypto/CommonRandomSPI.h>
 #include "CommonRandomPriv.h"
-#include <dispatch/dispatch.h>
-#include <dispatch/queue.h>
+#include "ccDispatch.h"
 #include <corecrypto/ccaes.h>
 #include <corecrypto/ccdrbg.h>
 #include <corecrypto/ccrng.h>
@@ -33,14 +32,6 @@
 #include "ccMemory.h"
 #include "ccErrors.h"
 #include "ccdebug.h"
-
-/*
- The types of refs including "undefined" and "user created".
-*/
-
-// static const uint32_t rng_undefined = 0;
-static const uint32_t rng_default = 1;      // Cryptographic rng from corecrypto
-static const uint32_t rng_created = 99;
 
 /*
  These are the two internal structures for a DRBG and /dev/random
@@ -66,7 +57,7 @@ ccDRBGGetRngState(void)
 {
     int status;
     struct ccrng_state *rng=ccrng(&status);
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "ccrng returned %d\n", status);
+    CC_DEBUG_LOG("ccrng returned %d\n", status);
     return rng;
 }
 
@@ -113,7 +104,7 @@ CCRNGCreate(uint32_t options, CCRandomRef *rngRef)
 CCRNGStatus
 CCRNGRelease(CCRandomRef rng)
 {
-    CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering\n");
+    CC_DEBUG_LOG("Entering\n");
     if(rng->rngtype == rng_created) {
         cc_clear(sizeof(ccInternalRandom),rng);
         CC_XFREE(rng, sizeof(ccInternalRandom));
@@ -136,19 +127,19 @@ int CCRandomCopyBytes(CCRandomRef rnd, void *bytes, size_t count)
     struct ccrng_state *rng;
 
     // Sanity on the input parameters
-    if(NULL == bytes) return -1;
     if(0 == count) return 0;
+    if(NULL == bytes) return -1;
 
     if(NULL == rnd) {
         // It should really not be NULL, but we deal with NULL.
-        CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering rnd(NULL)");
+        CC_DEBUG_LOG("Entering rnd(NULL)");
         rng = ccDRBGGetRngState();
         return ccRNGReadBytes(rng, bytes, count);
     }
 
     // Initialization failed, stoping here
     if (rnd->status!=0) {
-        CC_DEBUG_LOG(ASL_LEVEL_ERR, "Entering rnd(!NULL), type %d, init status %d", rnd->rngtype, rnd->status);
+        CC_DEBUG_LOG("Entering rnd(!NULL), type %d, init status %d", rnd->rngtype, rnd->status);
         return rnd->status; // Initialization failed, stoping here
     }
 

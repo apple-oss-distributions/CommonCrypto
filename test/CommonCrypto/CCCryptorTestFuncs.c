@@ -7,12 +7,13 @@
 
 
 #include <stdio.h>
+#include <assert.h>
 #include "CCCryptorTestFuncs.h"
 #include "testbyteBuffer.h"
 #include "testmore.h"
 #include "capabilities.h"
-#include "ccMemory.h"
-
+#include "../../lib/ccMemory.h"
+#include <CommonCrypto/CommonCryptorSPI.h>
 
 CCCryptorStatus
 CCCryptWithMode(CCOperation op, CCMode mode, CCAlgorithm alg, CCPadding padding, const void *iv, 
@@ -190,7 +191,7 @@ CCMultiCryptWithMode(CCOperation op, CCMode mode, CCAlgorithm alg, CCPadding pad
 #endif
 
 
-static byteBuffer
+byteBuffer
 ccConditionalTextBuffer(char *inputText)
 {
 	byteBuffer ret;
@@ -202,6 +203,9 @@ ccConditionalTextBuffer(char *inputText)
     }
     return ret;
 }
+
+#define log(do_print, MSG, ARGS...) \
+if(do_print){test_diag(test_directive, test_reason, __FILE__, __LINE__, MSG, ## ARGS);}
 
 int
 CCCryptTestCase(char *keyStr, char *ivStr, CCAlgorithm alg, CCOptions options, char *cipherText, char *plainText, bool log)
@@ -225,7 +229,7 @@ CCCryptTestCase(char *keyStr, char *ivStr, CCAlgorithm alg, CCOptions options, c
     if (alg==kCCAlgorithmAES) {
         //feed a wrong key length
         retval = CCCrypt(kCCEncrypt, alg, options, key->bytes, key->len-2, iv->bytes, pt->bytes, pt->len, cipherDataOut, 4096, &dataOutMoved);
-        if (retval!=kCCParamError)
+        if (retval!=kCCKeySizeError)
             goto errOut;
     }
         
@@ -273,9 +277,6 @@ errOut:
     free(iv);
 	return rc;
 }
-
-
-
 
 int
 CCMultiCryptTestCase(char *keyStr, char *ivStr, CCAlgorithm alg, CCOptions options, char *cipherText, char *plainText)
@@ -480,252 +481,3 @@ CCMultiModeTestCase(char *keyStr, char *ivStr, CCMode mode, CCAlgorithm alg, CCP
 }
 #endif
 
-//------------------------------------------------------------------------------
-#ifdef CCSYMGCM
-
-#define chk_result(msg) if(retval != kCCSuccess) {\
-                           printf("Failed to: "msg"\n");\
-                           goto out;\
-                        }
-
-static CCCryptorStatus
-CCCryptorGCMDiscreet(
-	CCOperation 	op,				/* kCCEncrypt, kCCDecrypt */
-	CCAlgorithm		alg,
-	const void 		*key,			/* raw key material */
-	size_t 			keyLength,	
-	const void 		*iv,
-	size_t 			ivLen,
-	const void 		*aData,
-	size_t 			aDataLen,
-	const void 		*dataIn,
-	size_t 			dataInLength,
-  	void 			*dataOut,
-	const void 		*tag,
-	size_t 			*tagLength,
-    bool callItAnyway)
-{
-    CCCryptorStatus retval;
-    CCCryptorRef    cref;
-    
-    retval = CCCryptorCreateWithMode(op, kCCModeGCM, alg, ccNoPadding, NULL, key, keyLength, NULL, 0, 0, 0, &cref);
-    if(retval != kCCSuccess) return retval;
-
-    if(callItAnyway || ivLen!=0){
-        retval = CCCryptorGCMAddIV(cref, iv, ivLen);
-        chk_result("add IV");
-    }
-
-    if(callItAnyway || aDataLen!=0){
-        retval = CCCryptorGCMaddAAD(cref, aData, aDataLen);
-        chk_result("add AAD");
-    }
-
-
-    if(callItAnyway || dataInLength!=0){
-       if(kCCEncrypt == op) {
-            retval = CCCryptorGCMEncrypt(cref, dataIn, dataInLength, dataOut);
-            chk_result("Encrypt");
-       } else {
-            retval = CCCryptorGCMDecrypt(cref, dataIn, dataInLength, dataOut);
-           chk_result("Decrypt");
-       }
-    }
-
-
-    retval = CCCryptorGCMFinal(cref, tag, tagLength);
-    chk_result("Finalize and get tag");
-
-    retval = CCCryptorGCMReset(cref);
-    chk_result("Failed to Reset");
-    
-out:
-
-    CCCryptorRelease(cref);
-    return retval;
-}
-
-
-int
-CCCryptorGCMTestCase(char *keyStr, char *ivStr, char *aDataStr, char *tagStr, CCAlgorithm alg, char *cipherText, char *plainText)
-{
-    byteBuffer key, iv;
-    byteBuffer pt, ct;
-    byteBuffer adata, tag;
-    byteBuffer bb;
-    int rc=1; //fail
-    
-	CCCryptorStatus retval;
-    char cipherDataOut[4096];
-    char plainDataOut[4096];
-    char tagDataOut[4096];
-    size_t tagDataOutlen;
-    size_t  dataLen;    
-
-    key = hexStringToBytes(keyStr);        
-    adata = ccConditionalTextBuffer(aDataStr);        
-    tag = hexStringToBytes(tagStr);        
-    pt = ccConditionalTextBuffer(plainText);
-    ct = ccConditionalTextBuffer(cipherText);
-    iv = ccConditionalTextBuffer(ivStr);
-    bb = NULL;
-
-    dataLen = pt->len;
-    
-    tagDataOutlen = tag->len;
-    CC_XZEROMEM(tagDataOut, 16);
-    if((retval = CCCryptorGCM(kCCEncrypt, alg, key->bytes, key->len, iv->bytes, iv->len, adata->bytes, adata->len, pt->bytes, dataLen, cipherDataOut, tagDataOut, &tagDataOutlen)) != kCCSuccess) {
-    	diag("Encrypt Failed\n");
-        goto errOut;
-    }
-        
-    bb = bytesToBytes(cipherDataOut, dataLen);    	
-
-    // If ct isn't defined we're gathering data - print the ciphertext result
-    if(!ct->bytes) {
-    	diag("Input Length %d Result: %s\n", (int) dataLen, bytesToHexString(bb));
-    } else {
-        if (!bytesAreEqual(ct, bb)) {
-            diag("FAIL Encrypt Output %s\nEncrypt Expect %s\n", bytesToHexString(bb), bytesToHexString(ct));
-        	goto errOut;
-        }
-    }
-
-    tagDataOutlen = tag->len;
-    CC_XZEROMEM(tagDataOut, 16);
-    if((retval = CCCryptorGCM(kCCDecrypt, alg, key->bytes, key->len, iv->bytes, iv->len, adata->bytes, adata->len, cipherDataOut, dataLen, plainDataOut, tagDataOut, &tagDataOutlen)) != kCCSuccess) {
-    	diag("Decrypt Failed\n");
-        goto errOut;
-    }
-
-    free(bb);
-    bb = bytesToBytes(plainDataOut, dataLen);
-    
-	if (!bytesAreEqual(pt, bb)) {
-        diag("FAIL Decrypt Output %s\nDecrypt Expect %s\n", bytesToHexString(bb), bytesToHexString(pt));
-        goto errOut;
-    }
-    
-    bb = bytesToBytes(tagDataOut, tagDataOutlen);
-    if (!bytesAreEqual(tag, bb)) {
-        diag("FAIL Tag on ciphertext is wrong\n       got %s\n  expected %s\n", bytesToHexString(bb), bytesToHexString(tag));
-        goto errOut;
-    }
-
-    rc = 0;
-
-errOut:
-    free(bb);
-    free(pt);
-    free(ct);
-    free(key);
-    free(iv);
-    // diag("Pass One-Shot GCM Test\n");
-	return rc;
-}
-
-static int
-GCMDiscreetTestCase(CCOperation op, char *keyStr, char *ivStr, char *aDataStr, char *tagStr, CCAlgorithm alg, char *cipherText, char *plainText, bool CallItAnyway)
-{
-    byteBuffer key, iv;
-    byteBuffer pt, ct;
-    byteBuffer adata, tag;
-    byteBuffer bb;
-
-
-    CCCryptorStatus retval;
-    char DataOut[4096];
-    char tagDataOut[4096];
-    size_t tagDataOutlen;
-
-    key = hexStringToBytes(keyStr);
-    adata = ccConditionalTextBuffer(aDataStr);
-    tag = hexStringToBytes(tagStr);
-    pt = ccConditionalTextBuffer(plainText);
-    ct = ccConditionalTextBuffer(cipherText);
-    iv = ccConditionalTextBuffer(ivStr);
-
-
-    const void 		*dataIn;
-    size_t 			dataInLength;
-    if(op == kCCEncrypt){
-        dataInLength = pt->len;
-        dataIn = pt->bytes;
-    } else{
-        dataInLength = ct->len;
-        dataIn = ct->bytes;
-    }
-
-
-    tagDataOutlen = tag->len;
-    CC_XZEROMEM(tagDataOut, 4096);
-    if((retval = CCCryptorGCMDiscreet(op, alg, key->bytes, key->len, iv->bytes, iv->len, adata->bytes, adata->len, dataIn, dataInLength, DataOut, tagDataOut, &tagDataOutlen, CallItAnyway)) != kCCSuccess) {
-        diag("Encrypt Failed\n");
-        return 1;
-    }
-
-    bb = bytesToBytes(DataOut, dataInLength);
-
-    // If ct isn't defined we're gathering data - print the ciphertext result
-    if(ct->bytes==NULL || pt->bytes==NULL) {
-        diag("Input Length %d Result: %s\n", (int) dataInLength, bytesToHexString(bb));
-    } else {
-        if (!bytesAreEqual(op==kCCEncrypt?ct:pt, bb)) {
-            diag("FAIL Encrypt Output %s\nEncrypt Expect %s\n", bytesToHexString(bb), bytesToHexString(ct));
-            return 1;
-        }
-    }
-
-    if(op ==kCCDecrypt){
-        free(bb);
-        bb = bytesToBytes(tagDataOut, tagDataOutlen);
-        if (!bytesAreEqual(tag, bb)) {
-            diag("FAIL Tag on ciphertext is wrong\n       got %s\n  expected %s\n", bytesToHexString(bb), bytesToHexString(tag));
-            return 1;
-        }
-    }
-
-    free(bb);
-    free(pt);
-    free(ct);
-    free(key);
-    free(iv);
-    // diag("Pass Discreet GCM Test\n");
-    
-    return 0;
-}
-
-int
-CCCryptorGCMDiscreetTestCase(char *keyStr, char *ivStr, char *aDataStr, char *tagStr, CCAlgorithm alg, char *cipherText, char *plainText)
-{
-
-    CCCryptorStatus rc;
-    rc = GCMDiscreetTestCase(kCCEncrypt, keyStr, ivStr, aDataStr, tagStr, alg, cipherText, plainText, true);
-    if(rc){
-        diag("GCM Encrypt Failed\n");
-        return 1;
-    }
-
-    rc = GCMDiscreetTestCase(kCCDecrypt, keyStr, ivStr, aDataStr, tagStr, alg, cipherText, plainText, true);
-    if(rc){
-        diag("GCM Decrypt Failed\n");
-        return 1;
-     }
-
-
-    rc = GCMDiscreetTestCase(kCCEncrypt, keyStr, ivStr, aDataStr, tagStr, alg, cipherText, plainText, false);
-    if(rc){
-        diag("GCM Encrypt (bypassing IV and AAD) Failed\n");
-        return 1;
-    }
-
-    rc = GCMDiscreetTestCase(kCCDecrypt, keyStr, ivStr, aDataStr, tagStr, alg, cipherText, plainText, false);
-    if(rc){
-        diag("GCM decrypt (bypassing IV and AAD) Failed\n");
-        return 1;
-    }
-
-    return 0;
-}
-
-#endif

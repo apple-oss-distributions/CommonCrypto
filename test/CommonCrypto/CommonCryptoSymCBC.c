@@ -37,7 +37,7 @@ entryPoint(CommonCryptoSymCBC,"CommonCrypto Symmetric CBC Testing")
 #else
 
 
-static int kTestTestCount = 30;
+static int kTestTestCount = 31;
 
 int CommonCryptoSymCBC(int __unused argc, char *const * __unused argv) {
 	char *keyStr;
@@ -198,9 +198,10 @@ int CommonCryptoSymCBC(int __unused argc, char *const * __unused argv) {
     ok(retval == 0, "CBC with Padding 33 byte Multiple Updates NULL IV");
     accum |= retval;
 
-    // 34 case test 1 repeated with wrong key size - negative test - don't let CCCryptTestCase() to print erro messages on the console
-    char keyStr_incorrect[strlen(keyStr)+3];
-    strcat(keyStr_incorrect, "01");
+    // 34 case test 1 repeated with wrong key size - negative test - don't let CCCryptTestCase() to print error messages on the console
+    char keyStr_incorrect[strlen(keyStr)+1+2];
+    strlcpy(keyStr_incorrect, keyStr, sizeof(keyStr_incorrect));
+    strlcat(keyStr_incorrect, "01", sizeof(keyStr_incorrect));
     plainText  = "0a";
     cipherText = "a385b047a4108a8748bf96b435738213";
     retval = CCCryptTestCase(keyStr_incorrect, iv, alg, options, cipherText, plainText, false);

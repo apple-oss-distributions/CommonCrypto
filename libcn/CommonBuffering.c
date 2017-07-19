@@ -6,8 +6,7 @@
 #include <stdio.h>
 #include "ccMemory.h"
 #include "CommonBufferingPriv.h"
-#include <AssertMacros.h>
-
+#include "../lib/cc_macros_priv.h"
 
 CNBufferRef
 CNBufferCreate(size_t chunksize)
@@ -34,6 +33,7 @@ CNBufferRelease(CNBufferRef *bufRef)
     CNBufferRef ref;
     
     __Require_Quiet(NULL != bufRef, out);
+
     ref = *bufRef;
     if(ref->buf) CC_XFREE(ref->buf, chunksize);
     if(ref) CC_XFREE(ref, sizeof(CNBuffer));
@@ -49,7 +49,8 @@ CNBufferProcessData(CNBufferRef bufRef,
                     cnProcessFunction pFunc, cnSizeFunction sizeFunc)
 {
     size_t  blocksize = bufRef->chunksize;
-    uint8_t *input = (uint8_t *) in, *output = out;
+    const uint8_t *input = in;
+    uint8_t *output = out;
     size_t inputLen = inLen, outputLen, inputUsing, outputAvailable;
     
     outputAvailable = outputLen = *outLen;

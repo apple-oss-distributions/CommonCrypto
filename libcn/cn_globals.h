@@ -30,14 +30,13 @@
  */
 
 #include <asl.h>
-#include <dispatch/dispatch.h>
 #include "crc.h"
 #include "basexx.h"
-#include "CommonCRC.h"
+#include <CommonNumerics/CommonCRC.h>
 
 #if __has_include(<os/alloc_once_private.h>)
 #include <os/alloc_once_private.h>
-#if defined(OS_ALLOC_ONCE_KEY_LIBCOMMONNUMERICS) && !defined(KERNEL)
+#if defined(OS_ALLOC_ONCE_KEY_LIBCOMMONNUMERICS)
 #define _LIBCOMMONNUMERICS_HAS_ALLOC_ONCE 1
 #endif
 #endif
