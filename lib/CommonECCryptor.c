@@ -22,11 +22,12 @@
  */
 
 // #define COMMON_EC_FUNCTIONS
+#include <stdlib.h>
+#include <CommonCrypto/CommonCryptoErrorSPI.h>
 #include <CommonCrypto/CommonECCryptor.h>
 #include <CommonCrypto/CommonDigest.h>
 #include "CommonDigestPriv.h"
 #include <CommonCrypto/CommonRandomSPI.h>
-#include "ccMemory.h"
 #include <corecrypto/ccec.h>
 #include "ccdebug.h"
 
@@ -56,10 +57,10 @@ ccMallocECCryptor(size_t nbits, CCECKeyType keyType)
     
     if(!ccec_keysize_is_supported(nbits)) return NULL;
     ccec_const_cp_t cp = ccec_get_cp(nbits);    
-    size_t len = ccec_cp_prime_size(cp);
+    size_t len = ccec_ccn_size(cp);
 
-    if((retval = CC_XMALLOC(sizeof(CCECCryptor))) == NULL) return NULL;
-    
+    if((retval = malloc(sizeof(CCECCryptor))) == NULL) return NULL;
+
     retval->key_nbits = nbits;
     retval->ecKey.bytes = NULL;
     
@@ -75,14 +76,14 @@ ccMallocECCryptor(size_t nbits, CCECKeyType keyType)
         default:
             goto errOut;
     }
-    
-    if((retval->ecKey.bytes = CC_XMALLOC(ctxSize)) == NULL) goto errOut;
+
+    if((retval->ecKey.bytes = malloc(ctxSize)) == NULL) goto errOut;
     ccec_ctx_init(cp, retval->ecKey.public);
 
     return retval;
 errOut:
     if(retval) {
-        CC_XFREE(retval, sizeof(CCECCryptor));
+        free(retval);
     }
     return NULL;
 }
@@ -94,7 +95,7 @@ ccECCryptorFree(CCECCryptor *theKey)
     size_t ctxSize = 0;
     
     ccec_const_cp_t cp = ccec_get_cp(nbits);    
-    size_t len = ccec_cp_prime_size(cp);
+    size_t len = ccec_ccn_size(cp);
     
     CCECCryptor *key = (CCECCryptor *) theKey;
     if(!key) return;
@@ -113,12 +114,12 @@ ccECCryptorFree(CCECCryptor *theKey)
     }
     
     if(ctxSize && key->ecKey.bytes) {
-        CC_XZEROMEM(key->ecKey.bytes, ctxSize);
-        CC_XFREE(key->ecKey.bytes, ctxSize);
+        cc_clear(ctxSize, key->ecKey.bytes);
+        free(key->ecKey.bytes);
     }
 
-    CC_XZEROMEM(key, sizeof(CCECCryptor));
-    CC_XFREE(theKey, sizeof(CCECCryptor));
+    cc_clear(sizeof(CCECCryptor), key);
+    free(theKey);
 }
 
 static bool
@@ -129,10 +130,10 @@ ccECpairwiseConsistencyCheck(CCECCryptorRef privateKey, CCECCryptorRef publicKey
 	size_t signedDataLen = 4096;
 	uint8_t signedData[4096];
 	uint32_t isValid = 0;
-    
-    CC_XMEMSET(digestBuffer, 0x0a, CC_SHA1_DIGEST_LENGTH);
-    
-	status = CCECCryptorSignHash(privateKey, 
+
+    memset(digestBuffer, 0x0a, CC_SHA1_DIGEST_LENGTH);
+
+	status = CCECCryptorSignHash(privateKey,
                                  digestBuffer, CC_SHA1_DIGEST_LENGTH,
                                  signedData, &signedDataLen);
     
@@ -173,6 +174,7 @@ CCECCryptorGeneratePair(size_t nbits, CCECCryptorRef *publicKey, CCECCryptorRef 
     
     __Require_Action(ccECpairwiseConsistencyCheck(privateCryptor, publicCryptor) == true, errOut, retval = kCCDecodeError);
     
+    
     *publicKey = publicCryptor;
     *privateKey = privateCryptor;
 
@@ -194,8 +196,8 @@ CCECCryptorGetPublicKeyFromPrivateKey(CCECCryptorRef privateKey)
     CC_DEBUG_LOG("Entering\n");
     __Require((publicCryptor = ccMallocECCryptor(privateKey->key_nbits, ccECKeyPublic)) != NULL, errOut);
     ccec_const_cp_t cp = ccec_get_cp(privateKey->key_nbits);    
-    size_t ctx_size = ccec_pub_ctx_size(ccec_cp_prime_size(cp));
-    CC_XMEMCPY(publicCryptor->ecKey.public, privateKey->ecKey.public, ctx_size);
+    size_t ctx_size = ccec_pub_ctx_size(ccec_ccn_size(cp));
+    memcpy(publicCryptor->ecKey.public, privateKey->ecKey.public, ctx_size);
     publicCryptor->key_nbits = privateKey->key_nbits;
     publicCryptor->keyType = ccECKeyPublic;
     
@@ -280,16 +282,17 @@ CCECCryptorRelease(CCECCryptorRef key)
     ccECCryptorFree(key);
 }
 
-CCCryptorStatus CCECCryptorImportPublicKey(void *keyPackage, size_t keyPackageLen, CCECCryptorRef *key)
+CCCryptorStatus CCECCryptorImportPublicKey(const void *keyPackage, size_t keyPackageLen, CCECCryptorRef *key)
 {
     CC_DEBUG_LOG("Entering\n");
     return CCECCryptorImportKey(kCCImportKeyBinary, keyPackage, keyPackageLen, ccECKeyPublic, key);
 }
 
 
-CCCryptorStatus CCECCryptorImportKey(CCECKeyExternalFormat format, void *keyPackage, size_t keyPackageLen, CCECKeyType keyType, CCECCryptorRef *key)
+CCCryptorStatus CCECCryptorImportKey(CCECKeyExternalFormat format, const void *keyPackage, size_t keyPackageLen, CCECKeyType keyType, CCECCryptorRef *key)
 {
     CCECCryptor *cryptor = NULL;
+    CCECCryptor *pubCryptor = NULL;
     CCCryptorStatus retval = kCCSuccess;
     
     CC_DEBUG_LOG("Entering\n");
@@ -302,14 +305,36 @@ CCCryptorStatus CCECCryptorImportKey(CCECKeyExternalFormat format, void *keyPack
                 if((cryptor = ccMallocECCryptor(nbits, ccECKeyPrivate)) == NULL) return kCCMemoryFailure;
                 ccec_const_cp_t cp = ccec_get_cp(nbits);
                 __Require_Action(ccec_x963_import_priv(cp, keyPackageLen, keyPackage, cryptor->ecKey.private) == 0, errOut, retval = kCCDecodeError);
+                __Require_Action((pubCryptor = CCECCryptorGetPublicKeyFromPrivateKey(cryptor)) != NULL, errOut, retval = kCCInvalidKey);
+                if(pubCryptor) ccECCryptorFree(pubCryptor);
                 cryptor->key_nbits = nbits;
             } else if(keyType == ccECKeyPublic) {
                 size_t nbits = ccec_x963_import_pub_size(keyPackageLen);
                 if((cryptor = ccMallocECCryptor(nbits, ccECKeyPublic)) == NULL) return kCCMemoryFailure;
                 ccec_const_cp_t cp = ccec_get_cp(nbits);
                 __Require_Action(ccec_x963_import_pub(cp, keyPackageLen, keyPackage, cryptor->ecKey.public) == 0, errOut, retval = kCCDecodeError);
+                __Require_Action(ccec_validate_pub(cryptor->ecKey.public), errOut, retval = kCCInvalidKey);
                 cryptor->key_nbits = nbits;
             } else return kCCParamError;
+
+            cryptor->keyType = keyType;
+            *key = cryptor;
+            break;
+        case kCCImportKeyCompact:
+            if (keyType == ccECKeyPublic) {
+                size_t nbits = ccec_compact_import_pub_size(keyPackageLen);
+                cryptor = ccMallocECCryptor(nbits, ccECKeyPublic);
+                if (cryptor == NULL) {
+                    return kCCMemoryFailure;
+                }
+
+                ccec_const_cp_t cp = ccec_get_cp(nbits);
+                __Require_Action(ccec_compact_import_pub(cp, keyPackageLen, keyPackage, cryptor->ecKey.public) == 0, errOut, retval = kCCInvalidKey);
+                __Require_Action(ccec_validate_pub(cryptor->ecKey.public), errOut, retval = kCCInvalidKey);
+                cryptor->key_nbits = nbits;
+            } else {
+                return kCCParamError;
+            }
 
             cryptor->keyType = keyType;
             *key = cryptor;
@@ -327,6 +352,7 @@ errOut:
     if(retval) {
         *key = NULL;
         if(cryptor) ccECCryptorFree(cryptor);
+        if(pubCryptor) ccECCryptorFree(pubCryptor);
     }
     
     return retval;
@@ -361,6 +387,22 @@ CCCryptorStatus CCECCryptorExportKey(CCECKeyExternalFormat format, void *keyPack
             *keyPackageLen = len;
             
             ccec_x963_export(keyType == ccECKeyPrivate, keyPackage, key->ecKey.private);
+            break;
+        }
+        case kCCImportKeyCompact: {
+            if (keyType == ccECKeyPrivate) {
+                return kCCUnimplemented;
+            }
+
+            size_t len = ccec_compact_export_size(0, key->ecKey.public);
+
+            if (len > *keyPackageLen) {
+                *keyPackageLen = len;
+                return kCCMemoryFailure;
+            }
+            *keyPackageLen = len;
+
+            ccec_compact_export_pub(keyPackage, key->ecKey.public);
             break;
         }
         case kCCImportKeyDER:
@@ -407,7 +449,7 @@ CCECCryptorVerifyHash(CCECCryptorRef publicKey,
     if(publicKey == NULL || hash == NULL || signedData == NULL) return kCCParamError;
     
     if(ccec_verify(publicKey->ecKey.public, hashLen, hash,
-                   signedDataLen, signedData, &stat)) retval = kCCDecodeError;
+                   signedDataLen, signedData, &stat)) retval = kCCNotVerified;
 	*valid = stat;
     return retval;
 }
@@ -447,10 +489,64 @@ CCECCryptorComputeSharedSecret(CCECCryptorRef privateKey, CCECCryptorRef publicK
     if(privateKey == NULL || publicKey == NULL) return kCCParamError;
     if(out == NULL) return kCCParamError;
     
-    if(ccec_compute_key(privateKey->ecKey.private, publicKey->ecKey.public,
-                        outLen, out)) return kCCDecodeError;
+    if(ccecdh_compute_shared_secret(privateKey->ecKey.private, publicKey->ecKey.public,
+                        outLen, out,ccrng(NULL))) return kCCDecodeError;
     
     return retval;
 }
 
+size_t
+CCECCryptorTwinDiversifyEntropySize(CCECCryptorRef key)
+{
+    ccec_const_cp_t cp = ccec_ctx_cp(key->ecKey.public);
+    return ccec_diversify_min_entropy_len(cp) * 2;
+}
+
+CCCryptorStatus
+CCECCryptorTwinDiversifyKey(CCECKeyType keyType, CCECCryptorRef inKey,
+                            void *entropy, size_t entropyLen,
+                            CCECCryptorRef *outKey)
+{
+    CCECCryptor *cryptor = NULL;
+
+    ccec_const_cp_t cp = ccec_ctx_cp(inKey->ecKey.public);
+    struct ccrng_state *masking_rng = ccDRBGGetRngState();
+
+    if (keyType != ccECKeyPublic && keyType != ccECKeyPrivate) {
+        return kCCParamError;
+    }
+
+    cryptor = ccMallocECCryptor(inKey->key_nbits, keyType);
+    if (cryptor == NULL) {
+        return kCCMemoryFailure;
+    }
+
+    int rv;
+    if (keyType == ccECKeyPublic) {
+        rv = ccec_diversify_pub_twin(cp, inKey->ecKey.public, entropyLen, entropy, masking_rng, cryptor->ecKey.public);
+    } else {
+        cc_unit *k = ccec_ctx_k(inKey->ecKey.private);
+        rv = ccec_diversify_priv_twin(cp, k, entropyLen, entropy, masking_rng, cryptor->ecKey.private);
+    }
+
+    if (rv) {
+        *outKey = NULL;
+
+        if (cryptor) {
+            ccECCryptorFree(cryptor);
+        }
+
+        if (rv == CCERR_PARAMETER) {
+            return kCCParamError;
+        }
+
+        return kCCInvalidKey;
+    }
+
+    cryptor->key_nbits = inKey->key_nbits;
+    cryptor->keyType = keyType;
+    *outKey = cryptor;
+
+    return kCCSuccess;
+}
 
